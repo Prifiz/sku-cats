@@ -11,14 +11,22 @@
   const btnClose = document.getElementById('lbClose');
   const btnPrev = document.getElementById('lbPrev');
   const btnNext = document.getElementById('lbNext');
+  const totalCount = document.getElementById('totalCount');
 
   const MAX_SCALE = 6;
   const DOUBLE_TAP_SCALE = 2.5;
 
-  let photos = [];
+  let photos = [];   // [{ src, number }], новые фото — первыми
   let slides = [];
   let buttons = [];
   let index = 0;
+
+  function photoWord(n) {
+    const mod10 = n % 10, mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'фотография';
+    if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'фотографии';
+    return 'фотографий';
+  }
 
   /* ---------- Загрузка списка фото ---------- */
 
@@ -34,8 +42,12 @@
     try {
       const res = await fetch('photos.json', { cache: 'no-cache' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const names = await res.json();
-      photos = names.map(n => 'photos/' + encodeURIComponent(n));
+      const items = await res.json();
+      // Поддерживаются оба формата на случай ручного редактирования photos.json:
+      // [{file, number}, ...] (новые — первыми) или просто ["a.jpg", ...].
+      photos = items.map((it, i) => typeof it === 'string'
+        ? { src: 'photos/' + encodeURIComponent(it), number: items.length - i }
+        : { src: 'photos/' + encodeURIComponent(it.file), number: it.number });
     } catch (err) {
       showMessage('Не удалось загрузить фотографии. Обновите страницу.');
       return;
@@ -44,12 +56,13 @@
       showMessage('Фотографии скоро появятся.');
       return;
     }
+    totalCount.textContent = photos.length + ' ' + photoWord(photos.length);
     render();
   }
 
   function render() {
     const frag = document.createDocumentFragment();
-    photos.forEach((src, i) => {
+    photos.forEach((p, i) => {
       const slide = document.createElement('section');
       slide.className = 'slide';
 
@@ -59,20 +72,25 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'photo-btn';
-      btn.setAttribute('aria-label', 'Открыть фото ' + (i + 1) + ' из ' + photos.length);
+      btn.setAttribute('aria-label', 'Открыть фото № ' + p.number + ' из ' + photos.length);
 
       const img = new Image();
-      img.alt = 'Скуратовский котик, фото ' + (i + 1);
+      img.alt = 'Скуратовский котик, фото № ' + p.number;
       img.decoding = 'async';
       img.draggable = false;
       img.loading = i < 2 ? 'eager' : 'lazy';
       img.addEventListener('load', () => fig.classList.add('loaded'));
       img.addEventListener('error', () => slide.remove());
-      img.src = src;
+      img.src = p.src;
+
+      const num = document.createElement('figcaption');
+      num.className = 'num';
+      num.textContent = '№ ' + p.number;
 
       btn.appendChild(img);
       btn.addEventListener('click', () => openAt(i, btn));
       fig.appendChild(btn);
+      fig.appendChild(num);
       slide.appendChild(fig);
       frag.appendChild(slide);
 
@@ -121,13 +139,13 @@
     if (i < 0 || i >= photos.length) return;
     index = i;
     resetTransform();
-    lbImg.src = photos[i];
-    lbImg.alt = 'Скуратовский котик, фото ' + (i + 1);
-    lbCount.textContent = (i + 1) + ' / ' + photos.length;
+    lbImg.src = photos[i].src;
+    lbImg.alt = 'Скуратовский котик, фото № ' + photos[i].number;
+    lbCount.textContent = '№ ' + photos[i].number + ' · ' + (i + 1) + ' / ' + photos.length;
     btnPrev.disabled = i === 0;
     btnNext.disabled = i === photos.length - 1;
     [i - 1, i + 1].forEach(j => {
-      if (photos[j]) { const pre = new Image(); pre.src = photos[j]; }
+      if (photos[j]) { const pre = new Image(); pre.src = photos[j].src; }
     });
   }
 

@@ -1,0 +1,117 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # вся история git нужна, чтобы узнать дату добавления каждого фото
+
+      - name: Install image tools
+        run: |
+          if ! command -v convert >/dev/null; then
+            sudo apt-get update -y
+            sudo apt-get install -y imagemagick
+          fi
+
+      - name: Build site, sort photos by date and compress them
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site/photos
+          cp index.html style.css script.js _site/
+
+          shopt -s nullglob nocaseglob
+          files=(photos/*.jpg photos/*.jpeg photos/*.png photos/*.webp photos/*.gif photos/*.avif)
+          shopt -u nocaseglob
+
+          # Имя файла на выходе: JPEG и PNG пережимаются в оптимизированный JPEG
+          # (фото в PNG почти не сжимается и весит в разы больше без выигрыша в качестве).
+          # GIF не трогаем, чтобы не сломать анимацию. WebP/AVIF пережимаем в своём формате.
+          out_name() {
+            local n="$1" ext="${1##*.}"
+            ext="$(echo "$ext" | tr '[:upper:]' '[:lower:]')"
+            case "$ext" in
+              gif) echo "$n" ;;
+              *)   echo "${n%.*}.jpg" ;;
+            esac
+          }
+
+          # Дата добавления (первого коммита с этим файлом) для каждого фото.
+          pairs=()
+          for f in "${files[@]}"; do
+            name="$(basename "$f")"
+            ts="$(git log --diff-filter=A --format=%ct -- "$f" | tail -1)"
+            if [ -z "$ts" ]; then ts="$(date +%s)"; fi
+            pairs+=("$ts|$name")
+          done
+
+          # Сжатие: убираем метаданные, ограничиваем размер и качество —
+          # это основной вклад в скорость загрузки страницы.
+          for f in "${files[@]}"; do
+            name="$(basename "$f")"
+            dest="_site/photos/$(out_name "$name")"
+            case "${name,,}" in
+              *.gif) cp "$f" "$dest" ;;
+              *.webp|*.avif)
+                convert "$f" -auto-orient -strip -resize '2000x2000>' -quality 80 "$dest" || cp "$f" "$dest" ;;
+              *)
+                convert "$f" -auto-orient -strip -resize '2000x2000>' -sampling-factor 4:2:0 \
+                  -interlace Plane -quality 82 "$dest" || cp "$f" "$dest" ;;
+            esac
+          done
+          echo "Сжато фото: ${#files[@]}"
+
+          # Нумерация по порядку добавления (1 — самое первое фото за всё время).
+          asc_sorted="$(printf '%s\n' "${pairs[@]}" | sort -t'|' -k1,1n -k2,2)"
+          declare -A number_of
+          n=1
+          while IFS='|' read -r ts name; do
+            [ -z "${name:-}" ] && continue
+            number_of["$name"]=$n
+            n=$((n + 1))
+          done <<< "$asc_sorted"
+
+          # Вывод в ленту — новые сверху (сортировка по убыванию даты).
+          desc_sorted="$(printf '%s\n' "${pairs[@]}" | sort -t'|' -k1,1nr -k2,2r)"
+          {
+            echo "["
+            first=1
+            while IFS='|' read -r ts name; do
+              [ -z "${name:-}" ] && continue
+              [ $first -eq 0 ] && echo ","
+              first=0
+              printf '{"file":%s,"number":%s}' "$(jq -Rn --arg v "$(out_name "$name")" '$v')" "${number_of[$name]}"
+            done <<< "$desc_sorted"
+            echo
+            echo "]"
+          } > _site/photos.json
+
+          echo "Фото в photos.json: $(jq length _site/photos.json)"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

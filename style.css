@@ -139,6 +139,16 @@ h1 span { white-space: nowrap; }
 }
 .scribble path { stroke-width: 3; vector-effect: non-scaling-stroke; }
 
+.total {
+  margin: 10px 2px 0;
+  text-align: right;
+  font-size: .8rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--kraft-deep);
+}
+
 .cue {
   position: absolute;
   left: 50%;
@@ -168,10 +178,25 @@ h1 span { white-space: nowrap; }
   width: fit-content;
   max-width: 100%;
   margin: 0;
-  padding: 16px;
+  padding: 16px 16px 42px;
   background-color: var(--kraft);
   background-image: var(--grain);
   box-shadow: 0 30px 60px rgba(0, 0, 0, .75), inset 0 0 0 2px rgba(0, 0, 0, .07);
+}
+
+/* номер фото — как подпись маркером под полароидом */
+.frame .num {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  margin: 0;
+  text-align: center;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: .02em;
+  color: var(--ink);
+  transform: rotate(-1deg);
 }
 /* полоска малярного скотча */
 .frame::before {
@@ -209,7 +234,7 @@ h1 span { white-space: nowrap; }
   width: auto;
   height: auto;
   max-width: 100%;
-  max-height: 88vh;
+  max-height: 82vh;
   -webkit-user-select: none;
   user-select: none;
   -webkit-user-drag: none;
@@ -325,14 +350,15 @@ h1 span { white-space: nowrap; }
     scroll-snap-stop: always;
   }
 
-  .frame { padding: 7px; }
+  .frame { padding: 7px 7px 32px; }
   .frame::before { display: none; }
   .frame:not(.loaded) .photo-btn { min-height: 50vh; min-width: 60vw; }
+  .frame .num { bottom: 7px; font-size: .92rem; }
 
   .photo-btn img {
-    max-width: calc(100vw - 38px);
-    max-height: calc(100vh - 38px);
-    max-height: calc(100svh - 38px);
+    max-width: calc(100vw - 34px);
+    max-height: calc(100vh - 59px);
+    max-height: calc(100svh - 59px);
   }
 
   .msg { scroll-snap-align: start; }
