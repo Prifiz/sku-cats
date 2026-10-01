@@ -55,11 +55,29 @@ jobs:
             esac
           }
 
-          # Дата добавления (первого коммита с этим файлом) для каждого фото.
+          # Дата создания фото: берём дату съёмки из EXIF самого файла (её хранит
+          # камера/телефон, а не git). Если EXIF нет (скриншот, графика, файл без
+          # метаданных) — запасной вариант: дата первого коммита, добавившего файл.
+          creation_ts() {
+            local f="$1" tag raw fixed ts
+            for tag in DateTimeOriginal CreateDate; do
+              raw="$(identify -format "%[EXIF:$tag]" "$f" 2>/dev/null || true)"
+              if [ -n "$raw" ]; then
+                fixed="$(echo "$raw" | sed -E 's/^([0-9]{4}):([0-9]{2}):([0-9]{2})/\1-\2-\3/')"
+                ts="$(date -d "$fixed" +%s 2>/dev/null || true)"
+                [ -n "$ts" ] && { echo "$ts"; return; }
+              fi
+            done
+            echo ""
+          }
+
           pairs=()
           for f in "${files[@]}"; do
             name="$(basename "$f")"
-            ts="$(git log --diff-filter=A --format=%ct -- "$f" | tail -1)"
+            ts="$(creation_ts "$f")"
+            if [ -z "$ts" ]; then
+              ts="$(git log --diff-filter=A --format=%ct -- "$f" | tail -1)"
+            fi
             if [ -z "$ts" ]; then ts="$(date +%s)"; fi
             pairs+=("$ts|$name")
           done
@@ -80,7 +98,7 @@ jobs:
           done
           echo "Сжато фото: ${#files[@]}"
 
-          # Нумерация по порядку добавления (1 — самое первое фото за всё время).
+          # Нумерация по порядку даты создания (1 — самое раннее фото за всё время).
           asc_sorted="$(printf '%s\n' "${pairs[@]}" | sort -t'|' -k1,1n -k2,2)"
           declare -A number_of
           n=1
